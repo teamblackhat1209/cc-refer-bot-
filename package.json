@@ -1,0 +1,14 @@
+{
+  "name": "telegram-cc-bot",
+  "version": "1.0.0",
+  "description": "CC Refer Telegram Bot",
+  "main": "api/bot.js",
+  "scripts": {
+    "start": "node api/bot.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.12.2",
+    "axios": "^1.4.0",
+    "node-cron": "^3.0.2"
+  }
+}
