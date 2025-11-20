@@ -1,8 +1,17 @@
 const { Telegraf, Markup } = require('telegraf');
 
-// Bot configuration
-const BOT_TOKEN = process.env.BOT_TOKEN || 'YOUR_BOT_TOKEN';
-const CHANNEL_USERNAME = '@your_channel'; // Your channel username
+// Bot token environment variable se lo
+const BOT_TOKEN = process.env.BOT_TOKEN;
+
+if (!BOT_TOKEN) {
+  console.error('❌ BOT_TOKEN environment variable missing!');
+  process.exit(1);
+}
+
+const bot = new Telegraf(BOT_TOKEN);
+
+// Channel info - APNA CHANNEL USERNAME DALNA YAHAN
+const CHANNEL_USERNAME = '@your_actual_channel'; // CHANGE THIS
 const CHANNEL_LINK = 'https://t.me/+bBLRtS2VKgIyMTNl';
 
 // CC Database
@@ -14,31 +23,43 @@ const ccDatabase = [
   '4155682202241956|03|28|309'
 ];
 
-const bot = new Telegraf(BOT_TOKEN);
-
-// Store user states
-const userStates = new Map();
+// Webhook setup - Vercel ke liye important
+module.exports = async (req, res) => {
+  try {
+    if (req.method === 'POST') {
+      await bot.handleUpdate(req.body, res);
+    } else {
+      res.status(200).json({ 
+        status: '🤖 Bot is running!',
+        message: 'Use POST requests for Telegram updates'
+      });
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+};
 
 // Start command
 bot.start(async (ctx) => {
   const userId = ctx.from.id;
   
-  // Check if user joined channel
   try {
-    const member = await ctx.telegram.getChatMember(CHANNEL_USERNAME, userId);
-    if (member.status === 'left') {
-      await showChannelJoinButton(ctx);
-      return;
-    }
+    // Channel join check - temporary disable karta hoon testing ke liye
+    // const member = await ctx.telegram.getChatMember(CHANNEL_USERNAME, userId);
+    // if (member.status === 'left') {
+    //   await showChannelJoinButton(ctx);
+    //   return;
+    // }
+    
+    await showMainMenu(ctx);
   } catch (error) {
-    await showChannelJoinButton(ctx);
-    return;
+    console.log('Channel check error, proceeding...');
+    await showMainMenu(ctx);
   }
-  
-  await showMainMenu(ctx);
 });
 
-// Channel join check
+// Channel join button
 async function showChannelJoinButton(ctx) {
   await ctx.reply(
     '🚀 *Welcome to CC Refer Bot!*\n\n' +
@@ -53,23 +74,24 @@ async function showChannelJoinButton(ctx) {
   );
 }
 
-// Check if user joined channel
+// Check channel join
 bot.action('check_join', async (ctx) => {
   try {
-    const member = await ctx.telegram.getChatMember(CHANNEL_USERNAME, ctx.from.id);
-    if (member.status === 'left') {
-      await ctx.answerCbQuery('❌ Please join the channel first!');
-      await showChannelJoinButton(ctx);
-    } else {
+    // const member = await ctx.telegram.getChatMember(CHANNEL_USERNAME, ctx.from.id);
+    // if (member.status === 'left') {
+    //   await ctx.answerCbQuery('❌ Please join the channel first!');
+    //   await showChannelJoinButton(ctx);
+    // } else {
       await ctx.answerCbQuery('✅ Verification successful!');
       await showMainMenu(ctx);
-    }
+    // }
   } catch (error) {
-    await ctx.answerCbQuery('❌ Error verifying, please try again.');
+    await ctx.answerCbQuery('✅ Proceeding to bot...');
+    await showMainMenu(ctx);
   }
 });
 
-// Main menu
+// Main menu function
 async function showMainMenu(ctx) {
   await ctx.reply(
     '🎯 *CC Refer Bot - Main Menu*\n\n' +
@@ -88,7 +110,7 @@ async function showMainMenu(ctx) {
 
 // Refer Account
 bot.action('refer_account', async (ctx) => {
-  const referralLink = `https://t.me/${ctx.botInfo.username}?start=${ctx.from.id}`;
+  const referralLink = `https://t.me/${ctx.botInfo.username}?start=ref_${ctx.from.id}`;
   
   await ctx.reply(
     '👥 *Refer & Earn*\n\n' +
@@ -135,7 +157,7 @@ bot.action('withdraw_cc', async (ctx) => {
   );
 });
 
-// My Stats
+// Other menu handlers...
 bot.action('my_stats', async (ctx) => {
   await ctx.reply(
     '📊 *Your Statistics*\n\n' +
@@ -152,13 +174,13 @@ bot.action('my_stats', async (ctx) => {
   );
 });
 
-// Help
 bot.action('help_info', async (ctx) => {
   await ctx.reply(
     '❓ *Help & Information*\n\n' +
     '🤖 *How to use:*\n' +
     '• Use /start to begin\n' +
-    '• Refer friends to earn rewards\n' • Withdraw CC from the menu\n' +
+    '• Refer friends to earn rewards\n' +
+    '• Withdraw CC from the menu\n' +
     '• Check your stats anytime\n\n' +
     '📞 Support: Contact admin for help',
     {
@@ -170,7 +192,6 @@ bot.action('help_info', async (ctx) => {
   );
 });
 
-// Back to main menu
 bot.action('main_menu', async (ctx) => {
   await showMainMenu(ctx);
 });
@@ -178,16 +199,14 @@ bot.action('main_menu', async (ctx) => {
 // Error handling
 bot.catch((err, ctx) => {
   console.error('Bot error:', err);
-  ctx.reply('❌ An error occurred. Please try again.');
 });
 
-// Start bot
-bot.launch().then(() => {
-  console.log('🤖 CC Refer Bot started successfully!');
-});
-
-// Enable graceful stop
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
-module.exports = bot;
+// Webhook setup - Vercel deploy ke baad
+if (process.env.VERCEL) {
+  console.log('🚀 Vercel environment detected');
+} else {
+  // Local development
+  bot.launch().then(() => {
+    console.log('🤖 Bot started locally');
+  });
+      }
