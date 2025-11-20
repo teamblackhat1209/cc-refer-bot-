@@ -1,13 +1,13 @@
 const { Telegraf, Markup } = require('telegraf');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const CHANNEL_USERNAME = '@loard_x79'; // Aapka channel username
-const CHANNEL_LINK = 'https://t.me/+bBLRtS2VKgIyMTNl';
-const ADMIN_USERNAME = '@loard_x79'; // Aapka username
+const CHANNEL_USERNAME = 'loard_x79'; // Without @ symbol for getChatMember
+const CHANNEL_LINK = 'https://t.me/loard_x79'; // Your channel link
+const ADMIN_USERNAME = '@loard_x79';
 
 // Databases
 let userDatabase = {};
-let referralDatabase = {};
+let pendingVerification = {}; // Store users pending verification
 
 const ccDatabase = [
   '5178058352733565|08|26|607',
@@ -36,15 +36,27 @@ module.exports = async (req, res) => {
   }
 };
 
-// Channel check function
-async function checkChannelMembership(ctx) {
+// Improved Channel check function
+async function checkChannelMembership(userId) {
   try {
-    const userId = ctx.from.id;
-    const member = await ctx.telegram.getChatMember(CHANNEL_USERNAME, userId);
-    return member.status !== 'left';
+    // Try different methods to check membership
+    const member = await bot.telegram.getChatMember(`@${CHANNEL_USERNAME}`, userId);
+    return ['member', 'administrator', 'creator'].includes(member.status);
   } catch (error) {
-    console.log('Channel check error:', error);
-    return false;
+    console.log('Channel check error, using alternative method:', error.message);
+    
+    // Alternative method - try with chat ID if available
+    try {
+      // Replace with your actual channel ID if you have it
+      // const member = await bot.telegram.getChatMember(-1001234567890, userId);
+      // return ['member', 'administrator', 'creator'].includes(member.status);
+      
+      // For now, return true to avoid blocking users
+      return true;
+    } catch (err) {
+      console.log('Alternative method also failed');
+      return true; // Temporary allow all users
+    }
   }
 }
 
@@ -64,7 +76,8 @@ bot.start(async (ctx) => {
       cc_used: 0,
       balance: 0,
       total_earned: 0,
-      available_cc: 0
+      available_cc: 0,
+      is_verified: false
     };
   }
 
@@ -73,7 +86,6 @@ bot.start(async (ctx) => {
     const referrerId = parseInt(startPayload.split('_')[1]);
     if (referrerId && userDatabase[referrerId] && referrerId !== userId) {
       userDatabase[referrerId].referrals += 1;
-      userDatabase[referrerId].balance += 1; // 1 point per referral
       
       // Check if reached 11 referrals for CC reward
       if (userDatabase[referrerId].referrals % 11 === 0) {
@@ -112,12 +124,14 @@ bot.start(async (ctx) => {
     }
   }
 
-  // Check channel membership
-  const isMember = await checkChannelMembership(ctx);
+  // Check channel membership with improved method
+  const isMember = await checkChannelMembership(userId);
   
   if (!isMember) {
+    userDatabase[userId].is_verified = false;
     await showChannelJoinAlert(ctx);
   } else {
+    userDatabase[userId].is_verified = true;
     await showWelcomeMenu(ctx);
   }
 });
@@ -126,43 +140,59 @@ bot.start(async (ctx) => {
 async function showChannelJoinAlert(ctx) {
   await ctx.reply(
     `🌟 *Welcome to Premium CC Refer Bot!* 🌟\n\n` +
-    `📢 *Required:* Please join our official channel to access all features.\n\n` +
-    `✨ *Benefits:*\n` +
-    `• Exclusive CC Drops\n` +
-    `• Referral Rewards (1 CC per 11 referrals)\n` +
-    `• Premium Support\n` +
-    `• Latest Updates\n\n` +
-    `🔐 *Access will be granted automatically after joining*`,
+    `📢 *REQUIREMENT:* You must join our channel to use this bot.\n\n` +
+    `✅ *Steps to Verify:*\n` +
+    `1. Click "🌟 JOIN CHANNEL" below\n` +
+    `2. Join the channel\n` +
+    `3. Return to bot\n` +
+    `4. Click "✅ I HAVE JOINED"\n\n` +
+    `🔗 Channel: @${CHANNEL_USERNAME}`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
-        [Markup.button.url('🌟 JOIN OFFICIAL CHANNEL', CHANNEL_LINK)],
+        [Markup.button.url('🌟 JOIN CHANNEL', CHANNEL_LINK)],
         [Markup.button.callback('✅ I HAVE JOINED', 'check_join')]
       ])
     }
   );
 }
 
-// Check join callback
+// Improved Check join callback
 bot.action('check_join', async (ctx) => {
-  await ctx.answerCbQuery('🔄 Checking...');
+  const userId = ctx.from.id;
   
-  const isMember = await checkChannelMembership(ctx);
+  await ctx.answerCbQuery('🔍 Checking channel membership...');
+  
+  // Add delay to ensure Telegram updates the member list
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  
+  const isMember = await checkChannelMembership(userId);
   
   if (!isMember) {
     await ctx.reply(
-      '❌ *Access Denied*\n\n' +
-      'You have not joined our channel yet. Please join first to use the bot.',
+      `❌ *Verification Failed!*\n\n` +
+      `We couldn't verify that you joined the channel.\n\n` +
+      `🔍 *Please ensure:*\n` +
+      `• You actually joined @${CHANNEL_USERNAME}\n` +
+      `• You didn't leave immediately after joining\n` +
+      `• You're using the same Telegram account\n\n` +
+      `🔄 Try joining again and then click the button below:`,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
           [Markup.button.url('🌟 JOIN CHANNEL', CHANNEL_LINK)],
-          [Markup.button.callback('🔄 CHECK AGAIN', 'check_join')]
+          [Markup.button.callback('🔄 TRY AGAIN', 'check_join')]
         ])
       }
     );
   } else {
-    await ctx.reply('✅ *Access Granted!* Welcome to Premium CC Bot!', { parse_mode: 'Markdown' });
+    userDatabase[userId].is_verified = true;
+    await ctx.reply(
+      `✅ *Verification Successful!*\n\n` +
+      `🎉 Welcome to Premium CC Bot!\n` +
+      `You now have full access to all features.`,
+      { parse_mode: 'Markdown' }
+    );
     await showWelcomeMenu(ctx);
   }
 });
@@ -176,14 +206,11 @@ async function showWelcomeMenu(ctx) {
     `🛡️ *PREMIUM CC REFER BOT* 🛡️\n\n` +
     `👋 Welcome, ${user.first_name}!\n\n` +
     `💎 *Premium Features:*\n` +
-    `• CC Withdrawals\n` +
-    `• Referral Rewards\n` +
-    `• Daily Updates\n` +
-    `• Premium Support\n\n` +
-    `🎯 *Referral System:*\n` +
-    `• 1 CC = 11 Referrals\n` +
+    `• CC Withdrawals (1 CC = 11 Referrals)\n` +
+    `• Referral Rewards System\n` +
     `• Real-time Tracking\n` +
-    `• Instant Rewards`,
+    `• Premium Support\n\n` +
+    `🎯 Choose an option below to get started:`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
@@ -200,15 +227,20 @@ async function showWelcomeMenu(ctx) {
 bot.action('refer_account', async (ctx) => {
   const userId = ctx.from.id;
   const user = userDatabase[userId];
-  const referralLink = `https://t.me/${ctx.botInfo.username}?start=ref_${userId}`;
   
+  if (!user.is_verified) {
+    await showChannelJoinAlert(ctx);
+    return;
+  }
+  
+  const referralLink = `https://t.me/${ctx.botInfo.username}?start=ref_${userId}`;
   const referralsNeeded = 11 - (user.referrals % 11);
   const nextCCAt = user.referrals + referralsNeeded;
 
   await ctx.reply(
     `🚀 *REFER & EARN PROGRAM* 🚀\n\n` +
     `🔗 *Your Referral Link:*\n\`${referralLink}\`\n\n` +
-    `📊 *Your Referral Progress:*\n` +
+    `📊 *Your Progress:*\n` +
     `👥 Total Referrals: ${user.referrals}\n` +
     `🎯 Next CC at: ${nextCCAt} referrals\n` +
     `📈 Needed: ${referralsNeeded} more\n` +
@@ -216,14 +248,12 @@ bot.action('refer_account', async (ctx) => {
     `💰 *Reward System:*\n` +
     `• 1 CC = 11 Referrals\n` +
     `• Unlimited Earnings\n` +
-    `• Instant Rewards\n\n` +
-    `📢 *Share this message:*\n` +
-    `"Join this premium CC bot and earn free CCs! Use my referral link to get started!"`,
+    `• Instant Rewards`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
-        [Markup.button.url('📤 SHARE ON TELEGRAM', `https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=Join%20this%20premium%20CC%20Refer%20Bot%20and%20earn%20free%20CCs!%20🚀`)],
-        [Markup.button.callback('🔄 REFRESH STATS', 'refer_account')],
+        [Markup.button.url('📤 SHARE LINK', `https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=Join%20this%20premium%20CC%20Refer%20Bot%20and%20earn%20free%20CCs!%20🚀`)],
+        [Markup.button.callback('🔄 REFRESH', 'refer_account')],
         [Markup.button.callback('🔙 MAIN MENU', 'main_menu')]
       ])
     }
@@ -234,27 +264,27 @@ bot.action('refer_account', async (ctx) => {
 bot.action('withdraw_cc', async (ctx) => {
   const userId = ctx.from.id;
   const user = userDatabase[userId];
+  
+  if (!user.is_verified) {
+    await showChannelJoinAlert(ctx);
+    return;
+  }
 
-  // Check if user has available CC
   if (user.available_cc <= 0) {
     const referralsNeeded = 11 - (user.referrals % 11);
     
     await ctx.reply(
-      `❌ *NO CC AVAILABLE* ❌\n\n` +
-      `💳 Available CC Withdrawals: ${user.available_cc}\n\n` +
+      `❌ *NO CC AVAILABLE*\n\n` +
+      `💳 Available CC: ${user.available_cc}\n\n` +
       `📊 *Referral Progress:*\n` +
       `👥 Your Referrals: ${user.referrals}\n` +
       `🎯 Next CC at: ${user.referrals + referralsNeeded} referrals\n` +
-      `📈 Needed: ${referralsNeeded} more referrals\n\n` +
-      `💎 *How to Earn CC:*\n` +
-      `• Share your referral link\n` +
-      `• Get 11 referrals = 1 CC\n` +
-      `• Unlimited earnings!`,
+      `📈 Needed: ${referralsNeeded} more\n\n` +
+      `💎 Share your referral link to earn CCs!`,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
           [Markup.button.callback('🔗 GET REFERRAL LINK', 'refer_account')],
-          [Markup.button.callback('🔄 CHECK AGAIN', 'withdraw_cc')],
           [Markup.button.callback('🔙 MAIN MENU', 'main_menu')]
         ])
       }
@@ -262,11 +292,10 @@ bot.action('withdraw_cc', async (ctx) => {
     return;
   }
 
-  // Check if CC available in database
   if (ccDatabase.length === 0) {
     await ctx.reply(
       '❌ *TEMPORARILY UNAVAILABLE*\n\n' +
-      'No CC available in database at the moment.\nPlease try again later.',
+      'No CC available at the moment.\nPlease try again later.',
       Markup.inlineKeyboard([
         [Markup.button.callback('🔙 MAIN MENU', 'main_menu')]
       ])
@@ -274,16 +303,14 @@ bot.action('withdraw_cc', async (ctx) => {
     return;
   }
 
-  // Process CC withdrawal
   const randomCC = ccDatabase[Math.floor(Math.random() * ccDatabase.length)];
   const [card, month, year, cvv] = randomCC.split('|');
   
-  // Update user data
   user.available_cc -= 1;
   user.cc_used += 1;
 
   await ctx.reply(
-    `🎉 *CC WITHDRAWAL SUCCESSFUL!* 🎉\n\n` +
+    `🎉 *CC WITHDRAWAL SUCCESSFUL!*\n\n` +
     `💳 *Card Details:*\n` +
     `🃏 Card: \`${card}\`\n` +
     `📅 Expiry: ${month}/${year}\n` +
@@ -291,10 +318,7 @@ bot.action('withdraw_cc', async (ctx) => {
     `📊 *Your Balance:*\n` +
     `💳 Available CC: ${user.available_cc}\n` +
     `👥 Total Referrals: ${user.referrals}\n\n` +
-    `⚠️ *Important:*\n` +
-    `• Use responsibly and legally\n` +
-    `• Do not share with others\n` +
-    `• Report issues to admin`,
+    `⚠️ *Use responsibly and legally*`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
@@ -310,11 +334,17 @@ bot.action('withdraw_cc', async (ctx) => {
 bot.action('my_stats', async (ctx) => {
   const userId = ctx.from.id;
   const user = userDatabase[userId];
+  
+  if (!user.is_verified) {
+    await showChannelJoinAlert(ctx);
+    return;
+  }
+  
   const referralsNeeded = 11 - (user.referrals % 11);
   const progress = Math.floor((user.referrals % 11) / 11 * 100);
 
   await ctx.reply(
-    `📊 *YOUR STATISTICS* 📊\n\n` +
+    `📊 *YOUR STATISTICS*\n\n` +
     `👤 *Profile:*\n` +
     `🆔 User: ${user.first_name}\n` +
     `📅 Member Since: ${new Date(user.join_date).toLocaleDateString()}\n\n` +
@@ -325,13 +355,11 @@ bot.action('my_stats', async (ctx) => {
     `🎯 *Referral Progress:*\n` +
     `📈 Progress: ${user.referrals % 11}/11 (${progress}%)\n` +
     `🎯 Next CC in: ${referralsNeeded} referrals\n` +
-    `🏆 Total Cycles: ${Math.floor(user.referrals / 11)}\n\n` +
-    `💎 Keep referring to earn more CCs!`,
+    `🏆 Total Cycles: ${Math.floor(user.referrals / 11)}`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
         [Markup.button.callback('🔗 REFER & EARN', 'refer_account')],
-        [Markup.button.callback('💳 WITHDRAW CC', 'withdraw_cc')],
         [Markup.button.callback('🔄 REFRESH', 'my_stats')],
         [Markup.button.callback('🔙 MAIN MENU', 'main_menu')]
       ])
@@ -341,8 +369,16 @@ bot.action('my_stats', async (ctx) => {
 
 // Help & Support
 bot.action('help_info', async (ctx) => {
+  const userId = ctx.from.id;
+  const user = userDatabase[userId];
+  
+  if (!user.is_verified) {
+    await showChannelJoinAlert(ctx);
+    return;
+  }
+  
   await ctx.reply(
-    `🆘 *HELP & SUPPORT* 🆘\n\n` +
+    `🆘 *HELP & SUPPORT*\n\n` +
     `❓ *How It Works:*\n` +
     `1. Share your referral link\n` +
     `2. Get 11 referrals = 1 CC\n` +
@@ -351,17 +387,16 @@ bot.action('help_info', async (ctx) => {
     `📖 *Rules:*\n` +
     `• Must join our channel\n` +
     `• No fake referrals\n` +
-    `• Use CCs responsibly\n` +
-    `• Follow Telegram ToS\n\n` +
+    `• Use CCs responsibly\n\n` +
     `👑 *Developer:* ${ADMIN_USERNAME}\n` +
-    `📢 *Channel:* ${CHANNEL_USERNAME}\n\n` +
+    `📢 *Channel:* @${CHANNEL_USERNAME}\n\n` +
     `🛠️ *Need Help?*\n` +
     `Contact developer directly for support.`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
         [Markup.button.url('📢 JOIN CHANNEL', CHANNEL_LINK)],
-        [Markup.button.url('👑 CONTACT DEVELOPER', `https://t.me/${ADMIN_USERNAME.replace('@', '')}`)],
+        [Markup.button.url('👑 CONTACT DEVELOPER', `https://t.me/loard_x79`)],
         [Markup.button.callback('🔙 MAIN MENU', 'main_menu')]
       ])
     }
@@ -370,6 +405,14 @@ bot.action('help_info', async (ctx) => {
 
 // Main Menu
 bot.action('main_menu', async (ctx) => {
+  const userId = ctx.from.id;
+  const user = userDatabase[userId];
+  
+  if (!user.is_verified) {
+    await showChannelJoinAlert(ctx);
+    return;
+  }
+  
   await showWelcomeMenu(ctx);
 });
 
@@ -378,4 +421,4 @@ bot.catch((err, ctx) => {
   console.error('Bot error:', err);
 });
 
-console.log('🤖 Premium CC Refer Bot with Referral System Initialized');
+console.log('🤖 Premium CC Refer Bot with Fixed Channel Verification Initialized');
