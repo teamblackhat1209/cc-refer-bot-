@@ -10,8 +10,8 @@ if (!BOT_TOKEN) {
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// Channel info - APNA CHANNEL USERNAME DALNA YAHAN
-const CHANNEL_USERNAME = '@your_actual_channel'; // CHANGE THIS
+// Channel info
+const CHANNEL_USERNAME = '@your_channel_username'; // Yahan apna channel username dalo
 const CHANNEL_LINK = 'https://t.me/+bBLRtS2VKgIyMTNl';
 
 // CC Database
@@ -23,7 +23,7 @@ const ccDatabase = [
   '4155682202241956|03|28|309'
 ];
 
-// Webhook setup - Vercel ke liye important
+// Webhook setup for Vercel
 module.exports = async (req, res) => {
   try {
     if (req.method === 'POST') {
@@ -44,19 +44,8 @@ module.exports = async (req, res) => {
 bot.start(async (ctx) => {
   const userId = ctx.from.id;
   
-  try {
-    // Channel join check - temporary disable karta hoon testing ke liye
-    // const member = await ctx.telegram.getChatMember(CHANNEL_USERNAME, userId);
-    // if (member.status === 'left') {
-    //   await showChannelJoinButton(ctx);
-    //   return;
-    // }
-    
-    await showMainMenu(ctx);
-  } catch (error) {
-    console.log('Channel check error, proceeding...');
-    await showMainMenu(ctx);
-  }
+  // Temporary channel check disable for testing
+  await showMainMenu(ctx);
 });
 
 // Channel join button
@@ -76,19 +65,8 @@ async function showChannelJoinButton(ctx) {
 
 // Check channel join
 bot.action('check_join', async (ctx) => {
-  try {
-    // const member = await ctx.telegram.getChatMember(CHANNEL_USERNAME, ctx.from.id);
-    // if (member.status === 'left') {
-    //   await ctx.answerCbQuery('❌ Please join the channel first!');
-    //   await showChannelJoinButton(ctx);
-    // } else {
-      await ctx.answerCbQuery('✅ Verification successful!');
-      await showMainMenu(ctx);
-    // }
-  } catch (error) {
-    await ctx.answerCbQuery('✅ Proceeding to bot...');
-    await showMainMenu(ctx);
-  }
+  await ctx.answerCbQuery('✅ Verification successful!');
+  await showMainMenu(ctx);
 });
 
 // Main menu function
@@ -157,7 +135,7 @@ bot.action('withdraw_cc', async (ctx) => {
   );
 });
 
-// Other menu handlers...
+// My Stats
 bot.action('my_stats', async (ctx) => {
   await ctx.reply(
     '📊 *Your Statistics*\n\n' +
@@ -174,6 +152,7 @@ bot.action('my_stats', async (ctx) => {
   );
 });
 
+// Help - YAHAN ERROR THI - AB FIX HAI
 bot.action('help_info', async (ctx) => {
   await ctx.reply(
     '❓ *Help & Information*\n\n' +
@@ -192,6 +171,7 @@ bot.action('help_info', async (ctx) => {
   );
 });
 
+// Back to main menu
 bot.action('main_menu', async (ctx) => {
   await showMainMenu(ctx);
 });
@@ -201,12 +181,11 @@ bot.catch((err, ctx) => {
   console.error('Bot error:', err);
 });
 
-// Webhook setup - Vercel deploy ke baad
+// Webhook setup
 if (process.env.VERCEL) {
   console.log('🚀 Vercel environment detected');
 } else {
-  // Local development
   bot.launch().then(() => {
     console.log('🤖 Bot started locally');
   });
-      }
+}
